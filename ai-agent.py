@@ -1,24 +1,29 @@
-import google.generativeai as genai
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from google import genai
 import error_handler as eh
-import os
 
+# תיקון השגיאה הקודמת: שימוש ב-__name__ במקום main.py
 app = Flask(__name__)
 CORS(app)
 
-# הגדרת ה-API של Gemini
-# קבל מפתח כאן: https://aistudio.google.com/app/apikey
-API_KEY = "AIzaSyBXQnCXwytRa06oMzK-aMl_XYLkLARp5Gc" 
-genai.configure(AIzaSyBXQnCXwytRa06oMzK-aMl_XYLkLARp5Gc)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# אתחול הלקוח של גוגל - הוא יקרא אוטומטית את המשתנה GEMINI_API_KEY מ-Render
+try:
+    client = genai.Client()
+except Exception as e:
+    print("Warning: Could not initialize Gemini Client. Check your environment variables.")
+    client = None
 
 # זיכרון המערכת
 users_db = {}
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.json
+    if not client:
+        return jsonify({"reply": "שגיאת מערכת: מפתח ה-API של Gemini לא מוגדר בשרת."})
+
+    data = request.json or {}
     user_id = data.get("user_id", "default_user")
     user_input = data.get("message", "")
 
@@ -28,8 +33,9 @@ def chat():
 
     # 2. ניהול זיכרון והיכרות
     if user_id not in users_db:
+        # יצירת שיחה מתמשכת ב-SDK החדש
         users_db[user_id] = {
-            "chat": model.start_chat(history=[]),
+            "history": [],
             "first_time": True,
             "images": 0
         }
@@ -42,11 +48,22 @@ def chat():
         prefix = "שלום! אני העוזר האישי שלך. נעים להכיר! אני מחובר ליומן ולמערכת הלימודים שלך. "
         user_session["first_time"] = False
 
-    # 4. שליחה ל-AI (Gemini)
+    # 4. שליחה ל-AI (Gemini 2.5 Flash החדש והמהיר)
     try:
-        response = user_session["chat"].send_message(user_input)
+        # בניית קונטקסט השיחה מתוך ההיסטוריה המקומית
+        messages = user_session["history"] + [{"role": "user", "parts": [user_input]}]
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=messages
+        )
+        
         reply_text = prefix + response.text
         
+        # שמירה בהיסטוריית הצ'אט לעדכון הזיכרון
+        user_session["history"].append({"role": "user", "parts": [user_input]})
+        user_session["history"].append({"role": "model", "parts": [response.text]})
+
         # לוגיקה לתזכורות/בחנים (זיהוי פשוט)
         if "תזכורת" in user_input:
             reply_text += "\n\n(רשמתי לעצמי ליצור תזכורת ביומן ובואטסאפ)"
@@ -60,6 +77,9 @@ def chat():
 @app.route('/upload', methods=['POST'])
 def upload():
     user_id = "default_user"
+    if user_id not in users_db:
+        users_db[user_id] = {"images": 0}
+        
     if users_db.get(user_id, {}).get("images", 0) >= 5:
         return jsonify({"reply": "מצטער, הגעת למגבלה של 5 תמונות."})
     
