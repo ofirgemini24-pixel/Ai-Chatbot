@@ -1,27 +1,32 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from google import genai
 import error_handler as eh
 
-# תיקון השגיאה הקודמת: שימוש ב-__name__ במקום main.py
+# אתחול השרת עם הגדרה תקינה
 app = Flask(__name__)
 CORS(app)
 
-# אתחול הלקוח של גוגל - הוא יקרא אוטומטית את המשתנה GEMINI_API_KEY מ-Render
+# אתחול הלקוח של גוגל - קורא אוטומטית את GEMINI_API_KEY מתוך Render
 try:
     client = genai.Client()
 except Exception as e:
-    print("Warning: Could not initialize Gemini Client. Check your environment variables.")
+    print("Warning: Could not initialize Gemini Client. Check Render Environment Variables.")
     client = None
 
 # זיכרון המערכת
 users_db = {}
 
+# --- התיקון המרכזי: נתיב הבית שיציג את ממשק הצ'אטבוט ב-Render ---
+@app.route('/', methods=['GET'])
+def home():
+    return render_template('interface.html')
+
 @app.route('/chat', methods=['POST'])
 def chat():
     if not client:
-        return jsonify({"reply": "שגיאת מערכת: מפתח ה-API של Gemini לא מוגדר בשרת."})
+        return jsonify({"reply": "שגיאת מערכת: מפתח ה-API של Gemini לא מוגדר בשרת הרחוק."})
 
     data = request.json or {}
     user_id = data.get("user_id", "default_user")
@@ -33,7 +38,6 @@ def chat():
 
     # 2. ניהול זיכרון והיכרות
     if user_id not in users_db:
-        # יצירת שיחה מתמשכת ב-SDK החדש
         users_db[user_id] = {
             "history": [],
             "first_time": True,
@@ -48,9 +52,8 @@ def chat():
         prefix = "שלום! אני העוזר האישי שלך. נעים להכיר! אני מחובר ליומן ולמערכת הלימודים שלך. "
         user_session["first_time"] = False
 
-    # 4. שליחה ל-AI (Gemini 2.5 Flash החדש והמהיר)
+    # 4. שליחה ל-Gemini 2.5 Flash החדש
     try:
-        # בניית קונטקסט השיחה מתוך ההיסטוריה המקומית
         messages = user_session["history"] + [{"role": "user", "parts": [user_input]}]
         
         response = client.models.generate_content(
@@ -60,11 +63,11 @@ def chat():
         
         reply_text = prefix + response.text
         
-        # שמירה בהיסטוריית הצ'אט לעדכון הזיכרון
+        # שמירת ההיסטוריה לטובת זיכרון מתמשך
         user_session["history"].append({"role": "user", "parts": [user_input]})
         user_session["history"].append({"role": "model", "parts": [response.text]})
 
-        # לוגיקה לתזכורות/בחנים (זיהוי פשוט)
+        # זיהוי פקודות פשוטות
         if "תזכורת" in user_input:
             reply_text += "\n\n(רשמתי לעצמי ליצור תזכורת ביומן ובואטסאפ)"
         if "בוחן" in user_input:
