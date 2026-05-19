@@ -9,7 +9,7 @@ CORS(app)
 
 # הגדרת ה-API של Gemini
 # קבל מפתח כאן: https://aistudio.google.com/app/apikey
-API_KEY = "הכנס_כאן_את_המפתח_שלך" 
+API_KEY = "AIzaSyBXQnCXwytRa06oMzK-aMl_XYLkLARp5Gc" 
 genai.configure(AIzaSyBXQnCXwytRa06oMzK-aMl_XYLkLARp5Gc)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
