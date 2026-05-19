@@ -1,14 +1,12 @@
 import os
-from flask import Flask, request, jsonify, render_template
-from flask_cors import CORS
-from google import genai
-import error_handler as eh
+from flask import Flask
+import google.generativeai as genai
 
-# אתחול האפליקציה בצורה תקינה עבור המבנה שלך
 app = Flask(__name__)
-CORS(app)
 
-# אתחול הלקוח של גוגל - מושך אוטומטית את GEMINI_API_KEY מתוך Render
+# משיכת המשתנה שהגדרנו ב-Render
+api_key = os.environ.get("AIzaSyAShrZ9U1ntTJH3l1otRYvyJ_ILGnMuuE0")
+genai.configure(api_key=api_key)
 try:
     client = genai.Client()
 except Exception as e:
