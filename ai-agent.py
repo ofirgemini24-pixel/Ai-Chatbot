@@ -4,25 +4,26 @@ from flask_cors import CORS
 from google import genai
 import error_handler as eh
 
-# אתחול השרת עם הגדרה תקינה
+# אתחול שרת ה-Flask עם תמיכה בתיקיית ה-templates
 app = Flask(__name__)
 CORS(app)
 
-# אתחול הלקוח של גוגל - קורא אוטומטית את GEMINI_API_KEY מתוך Render
+# אתחול הלקוח של גוגל - מושך את ה-GEMINI_API_KEY באופן מאובטח מהגדרות הסביבה ב-Render
 try:
     client = genai.Client()
 except Exception as e:
     print("Warning: Could not initialize Gemini Client. Check Render Environment Variables.")
     client = None
 
-# זיכרון המערכת
+# זיכרון השיחות של המשתמשים
 users_db = {}
 
-# --- התיקון המרכזי: נתיב הבית שיציג את ממשק הצ'אטבוט ב-Render ---
+# --- נתיב הבית: מציג את ממשק הצ'אטבוט (interface.html) ישירות בקישור של Render ---
 @app.route('/', methods=['GET'])
 def home():
     return render_template('interface.html')
 
+# --- נתיב הצ'אט: מקבל הודעות מהממשק ושולח אותן ל-Gemini ---
 @app.route('/chat', methods=['POST'])
 def chat():
     if not client:
@@ -32,11 +33,11 @@ def chat():
     user_id = data.get("user_id", "default_user")
     user_input = data.get("message", "")
 
-    # 1. חסימת תוכן בוטה
+    # 1. חסימת תוכן בוטה או מילים אסורות
     if not eh.is_safe(user_input):
         return jsonify({"reply": "אני לא יכול לענות על זה, בוא נשמור על שיחה מכבדת."})
 
-    # 2. ניהול זיכרון והיכרות
+    # 2. ניהול זיכרון והיסטוריית שיחה
     if user_id not in users_db:
         users_db[user_id] = {
             "history": [],
@@ -46,14 +47,15 @@ def chat():
 
     user_session = users_db[user_id]
     
-    # 3. הודעת היכרות בשיחה הראשונה
+    # 3. הודעת היכרות מותאמת אישית בשיחה הראשונה
     prefix = ""
     if user_session["first_time"]:
         prefix = "שלום! אני העוזר האישי שלך. נעים להכיר! אני מחובר ליומן ולמערכת הלימודים שלך. "
         user_session["first_time"] = False
 
-    # 4. שליחה ל-Gemini 2.5 Flash החדש
+    # 4. שליחת ההודעה ל-Gemini 2.5 Flash (הדגם המעודכן והמהיר)
     try:
+        # בניית מבנה הודעות עם ההיסטוריה הקודמת
         messages = user_session["history"] + [{"role": "user", "parts": [user_input]}]
         
         response = client.models.generate_content(
@@ -63,11 +65,11 @@ def chat():
         
         reply_text = prefix + response.text
         
-        # שמירת ההיסטוריה לטובת זיכרון מתמשך
+        # שמירת ההודעות הנוכחיות בזיכרון השיחה
         user_session["history"].append({"role": "user", "parts": [user_input]})
         user_session["history"].append({"role": "model", "parts": [response.text]})
 
-        # זיהוי פקודות פשוטות
+        # לוגיקת זיהוי פקודות בסיסית
         if "תזכורת" in user_input:
             reply_text += "\n\n(רשמתי לעצמי ליצור תזכורת ביומן ובואטסאפ)"
         if "בוחן" in user_input:
@@ -77,6 +79,7 @@ def chat():
     except Exception as e:
         return jsonify({"reply": eh.log_error(e)})
 
+# --- נתיב העלאת תמונות: בדיקת מגבלת כמות ---
 @app.route('/upload', methods=['POST'])
 def upload():
     user_id = "default_user"
